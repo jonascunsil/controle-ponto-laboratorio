@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Ponto — Laboratório</title>
+<style>
+  :root{
+    --bg:#0d1117;
+    --panel:#161b22;
+    --panel-2:#1c2330;
+    --line:#26303d;
+    --line-soft:#1e2733;
+    --txt:#e6edf3;
+    --txt-dim:#8b98a5;
+    --txt-faint:#5b6675;
+    --in:#5eead4;       /* entrada — phosphor teal */
+    --in-deep:#0c3a35;
+    --out:#f5a524;      /* saída — sodium amber */
+    --out-deep:#3a2a08;
+    --danger:#f87171;
+    --radius:14px;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--txt);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--in);outline-offset:2px}
+
+  /* ---------- KIOSK ---------- */
+  #kiosk{height:100%;display:flex;flex-direction:column}
+  .topbar{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding:22px 30px;border-bottom:1px solid var(--line-soft);
+  }
+  .lab-id{display:flex;align-items:center;gap:12px}
+  .lab-mark{
+    width:34px;height:34px;border:2px solid var(--in);border-radius:9px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:700;color:var(--in);font-size:18px;
+    box-shadow:0 0 18px -6px var(--in);
+  }
+  .lab-name{font-weight:650;font-size:1.05rem;letter-spacing:.2px}
+  .lab-sub{font-size:.72rem;color:var(--txt-faint);text-transform:uppercase;letter-spacing:2px;margin-top:2px}
+  .clock{text-align:right}
+  .clock .t{font-family:var(--mono);font-size:1.6rem;font-weight:600;letter-spacing:1px}
+  .clock .d{font-size:.78rem;color:var(--txt-dim);margin-top:2px;text-transform:capitalize}
+
+  .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 20px;min-height:0}
+  .prompt{font-size:.9rem;color:var(--txt-dim);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px}
+  .cpf-display{
+    font-family:var(--mono);font-size:clamp(2.2rem,7vw,3.6rem);font-weight:600;
+    letter-spacing:6px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px 30px;min-width:min(560px,90vw);
+    text-align:center;color:var(--txt);
+  }
+  .cpf-display .ph{color:var(--txt-faint)}
+  .cpf-hint{height:20px;margin-top:10px;font-size:.85rem;color:var(--danger);opacity:0;transition:opacity .2s}
+  .cpf-hint.show{opacity:1}
+
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px;width:min(420px,90vw)}
+  .key{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--mono);font-size:1.7rem;font-weight:600;padding:18px 0;
+    transition:transform .06s,background .15s,border-color .15s;
+    color:var(--txt);
+  }
+  .key:hover{background:var(--panel-2);border-color:var(--line)}
+  .key:active{transform:translateY(2px);background:#222b3a}
+  .key.back{color:var(--txt-dim);font-size:1.3rem}
+  .key.enter{
+    grid-column:span 1;background:var(--in-deep);border-color:#1c5750;color:var(--in);
+    font-family:var(--sans);font-size:1rem;font-weight:650;letter-spacing:.3px;
+  }
+  .key.enter:hover{background:#114b44}
+  .key.wide{grid-column:1 / -1}
+
+  .footbar{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:16px 30px;border-top:1px solid var(--line-soft);font-size:.85rem;color:var(--txt-dim);
+  }
+  .inside-count{display:flex;align-items:center;gap:9px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--in);box-shadow:0 0 10px var(--in)}
+  .admin-link{color:var(--txt-faint);font-size:.8rem;letter-spacing:1px;padding:6px 12px;border-radius:8px;text-transform:uppercase}
+  .admin-link:hover{color:var(--txt-dim);background:var(--panel)}
+
+  /* ---------- FEEDBACK OVERLAY ---------- */
+  .flash{
+    position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;
+    background:rgba(13,17,23,.97);opacity:0;pointer-events:none;transition:opacity .25s;
+  }
+  .flash.show{opacity:1;pointer-events:auto}
+  .flash .icon{
+    width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:60px;font-weight:700;
+  }
+  .flash.in .icon{background:var(--in-deep);color:var(--in);box-shadow:0 0 60px -10px var(--in)}
+  .flash.out .icon{background:var(--out-deep);color:var(--out);box-shadow:0 0 60px -10px var(--out)}
+  .flash .who{font-size:2rem;font-weight:650;text-align:center;padding:0 20px}
+  .flash .meta{font-family:var(--mono);font-size:1.2rem;color:var(--txt-dim)}
+  .flash.in .tag,.flash.out .tag{
+    font-size:.85rem;letter-spacing:3px;text-transform:uppercase;font-weight:650;
+  }
+  .flash.in .tag{color:var(--in)} .flash.out .tag{color:var(--out)}
+  .flash.warn .icon{background:#3a1f24;color:var(--danger);box-shadow:0 0 60px -10px var(--danger)}
+  .flash.warn .tag{color:var(--danger);font-size:.85rem;letter-spacing:3px;text-transform:uppercase;font-weight:650}
+  .flash.warn .who{font-size:1.5rem}
+
+  /* name capture mini-form */
+  .namebox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:30px;width:min(440px,92vw);text-align:center}
+  .namebox h3{margin:0 0 6px;font-size:1.3rem}
+  .namebox p{margin:0 0 20px;color:var(--txt-dim);font-size:.9rem}
+  .namebox input{
+    width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
+    color:var(--txt);font-size:1.2rem;padding:14px 16px;text-align:center;margin-bottom:16px;
+  }
+  .namebox .row{display:flex;gap:10px}
+  .btn{border-radius:10px;padding:13px 18px;font-weight:600;font-size:.95rem;flex:1;transition:filter .15s}
+  .btn:hover{filter:brightness(1.12)}
+  .btn-primary{background:var(--in);color:#06231f}
+  .btn-ghost{background:var(--panel-2);color:var(--txt-dim);border:1px solid var(--line)}
+
+  /* ---------- ADMIN ---------- */
+  #admin{position:fixed;inset:0;z-index:40;background:var(--bg);display:none;flex-direction:column}
+  #admin.show{display:flex}
+  .admin-head{display:flex;justify-content:space-between;align-items:center;padding:20px 30px;border-bottom:1px solid var(--line)}
+  .admin-head h2{margin:0;font-size:1.2rem;font-weight:650}
+  .admin-head .sub{font-size:.75rem;color:var(--txt-faint);letter-spacing:2px;text-transform:uppercase}
+  .admin-body{flex:1;overflow-y:auto;padding:24px 30px}
+  .tabs{display:flex;gap:6px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+  .tab{padding:11px 18px;color:var(--txt-dim);font-size:.92rem;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.active{color:var(--in);border-color:var(--in);font-weight:600}
+  .panel-view{display:none} .panel-view.active{display:block}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .toolbar .spacer{flex:1}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:.72rem;color:var(--txt-faint);text-transform:uppercase;letter-spacing:1px}
+  .field input{background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px 11px;font-size:.9rem}
+  .mini{padding:10px 14px;border-radius:9px;font-size:.85rem;font-weight:600;background:var(--panel-2);border:1px solid var(--line);color:var(--txt)}
+  .mini:hover{background:#222b3a}
+  .mini.go{background:var(--in-deep);border-color:#1c5750;color:var(--in)}
+  .mini.amber{background:var(--out-deep);border-color:#5a4310;color:var(--out)}
+  .mini.del{background:transparent;border-color:transparent;color:var(--txt-faint);padding:6px 9px}
+  .mini.del:hover{color:var(--danger)}
+
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{text-align:left;color:var(--txt-faint);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:.7rem;padding:10px 12px;border-bottom:1px solid var(--line)}
+  td{padding:11px 12px;border-bottom:1px solid var(--line-soft)}
+  tr:hover td{background:var(--panel)}
+  .mono{font-family:var(--mono)}
+  .pill{font-size:.72rem;font-weight:650;padding:3px 9px;border-radius:20px;letter-spacing:.5px}
+  .pill.in{background:var(--in-deep);color:var(--in)}
+  .pill.out{background:var(--out-deep);color:var(--out)}
+  .pill.open{background:#3a1f24;color:var(--danger)}
+  .num{font-family:var(--mono);font-weight:600}
+  .empty{text-align:center;color:var(--txt-faint);padding:50px 20px;font-size:.95rem}
+  .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;min-width:150px}
+  .stat .v{font-family:var(--mono);font-size:1.8rem;font-weight:600}
+  .stat .l{font-size:.75rem;color:var(--txt-dim);margin-top:3px;text-transform:uppercase;letter-spacing:1px}
+
+  /* PIN modal */
+  .modal{position:fixed;inset:0;z-index:60;background:rgba(13,17,23,.9);display:none;align-items:center;justify-content:center}
+  .modal.show{display:flex}
+  .pinbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:30px;width:min(360px,92vw);text-align:center}
+  .pinbox h3{margin:0 0 16px}
+  .pinbox input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--txt);font-size:1.6rem;font-family:var(--mono);letter-spacing:10px;text-align:center;padding:12px;margin-bottom:14px}
+  .note{font-size:.78rem;color:var(--txt-faint);margin-top:14px;line-height:1.5}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ============ KIOSK ============ -->
+<div id="kiosk">
+  <div class="topbar">
+    <div class="lab-id">
+      <div class="lab-mark" id="labMark">L</div>
+      <div>
+        <div class="lab-name" id="labName">Laboratório</div>
+        <div class="lab-sub">Controle de presença</div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="t" id="clockT">--:--:--</div>
+      <div class="d" id="clockD">—</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="prompt">Digite seu CPF</div>
+    <div class="cpf-display" id="cpfDisplay"></div>
+    <div class="cpf-hint" id="cpfHint"></div>
+    <div class="pad" id="pad">
+      <button class="key" data-k="1">1</button>
+      <button class="key" data-k="2">2</button>
+      <button class="key" data-k="3">3</button>
+      <button class="key" data-k="4">4</button>
+      <button class="key" data-k="5">5</button>
+      <button class="key" data-k="6">6</button>
+      <button class="key" data-k="7">7</button>
+      <button class="key" data-k="8">8</button>
+      <button class="key" data-k="9">9</button>
+      <button class="key back" data-k="back">⌫</button>
+      <button class="key" data-k="0">0</button>
+      <button class="key enter" data-k="enter">Registrar</button>
+    </div>
+  </div>
+
+  <div class="footbar">
+    <div class="inside-count"><span class="dot"></span><span id="insideTxt">0 no laboratório agora</span></div>
+    <button class="admin-link" id="openAdmin">Administração</button>
+  </div>
+</div>
+
+<!-- ============ FEEDBACK FLASH ============ -->
+<div class="flash" id="flash">
+  <div class="icon" id="flashIcon">✓</div>
+  <div class="tag" id="flashTag"></div>
+  <div class="who" id="flashWho"></div>
+  <div class="meta" id="flashMeta"></div>
+</div>
+
+<!-- ============ NAME CAPTURE ============ -->
+<div class="flash" id="nameFlash">
+  <div class="namebox">
+    <h3>Primeiro registro</h3>
+    <p>Esse CPF ainda não tem nome. Digite o nome do aluno uma única vez.</p>
+    <input id="nameInput" type="text" placeholder="Nome completo" autocomplete="off">
+    <div class="row">
+      <button class="btn btn-ghost" id="nameCancel">Cancelar</button>
+      <button class="btn btn-primary" id="nameSave">Salvar e registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PIN ============ -->
+<div class="modal" id="pinModal">
+  <div class="pinbox">
+    <h3>Acesso à administração</h3>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="PIN">
+    <div class="row" style="display:flex;gap:10px">
+      <button class="btn btn-ghost" id="pinCancel">Voltar</button>
+      <button class="btn btn-primary" id="pinOk">Entrar</button>
+    </div>
+    <div class="note">PIN padrão: <b>1234</b> — altere em Configurações. Este PIN apenas evita acesso casual; não é uma senha segura.</div>
+  </div>
+</div>
+
+<!-- ============ ADMIN ============ -->
+<div id="admin">
+  <div class="admin-head">
+    <div>
+      <h2 id="adminTitle">Administração</h2>
+      <div class="sub">Controle de presença</div>
+    </div>
+    <button class="mini" id="closeAdmin">← Voltar ao quiosque</button>
+  </div>
+  <div class="admin-body">
+    <div class="tabs">
+      <button class="tab active" data-tab="hours">Horas por aluno</button>
+      <button class="tab" data-tab="log">Registros</button>
+      <button class="tab" data-tab="students">Alunos</button>
+      <button class="tab" data-tab="settings">Configurações</button>
+    </div>
+
+    <!-- HOURS -->
+    <div class="panel-view active" data-view="hours">
+      <div class="toolbar">
+        <div class="field"><label>De</label><input type="date" id="fDe"></div>
+        <div class="field"><label>Até</label><input type="date" id="fAte"></div>
+        <button class="mini" id="fClear">Limpar período</button>
+        <div class="spacer"></div>
+        <button class="mini go" id="expHours">Exportar horas (CSV)</button>
+      </div>
+      <div class="cards" id="hoursCards"></div>
+      <table id="hoursTable"><thead><tr>
+        <th>Aluno</th><th>CPF</th><th>Dias</th><th>Registros</th><th>Total de horas</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="empty" id="hoursEmpty" style="display:none">Nenhum registro no período selecionado.</div>
+    </div>
+
+    <!-- LOG -->
+    <div class="panel-view" data-view="log">
+      <div class="toolbar">
+        <div class="field"><label>Filtrar por CPF/nome</label><input type="text" id="logFilter" placeholder="ex.: Maria ou 123..."></div>
+        <button class="mini amber" id="closeOpen">Encerrar entradas em aberto</button>
+        <div class="spacer"></div>
+        <button class="mini go" id="expLog">Exportar registros (CSV)</button>
+      </div>
+      <table id="logTable"><thead><tr>
+        <th>Data</th><th>Hora</th><th>Aluno</th><th>CPF</th><th>Tipo</th><th></th>
+      </tr></thead><tbody></tbody></table>
+      <div class="empty" id="logEmpty" style="display:none">Nenhum registro ainda.</div>
+    </div>
+
+    <!-- STUDENTS -->
+    <div class="panel-view" data-view="students">
+      <div class="toolbar">
+        <div class="field"><label>CPF</label><input type="text" id="stCpf" placeholder="000.000.000-00"></div>
+        <div class="field"><label>Nome</label><input type="text" id="stName" placeholder="Nome do aluno"></div>
+        <button class="mini go" id="stAdd" style="align-self:flex-end">Cadastrar aluno</button>
+      </div>
+      <table id="stTable"><thead><tr>
+        <th>Nome</th><th>CPF</th><th>Status agora</th><th></th>
+      </tr></thead><tbody></tbody></table>
+      <div class="empty" id="stEmpty" style="display:none">Nenhum aluno cadastrado. Cadastre os alunos pelo formulário acima — só quem está cadastrado consegue registrar ponto no quiosque.</div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel-view" data-view="settings">
+      <div style="max-width:460px;display:flex;flex-direction:column;gap:18px">
+        <div class="field"><label>Nome do laboratório</label><input type="text" id="setLab"></div>
+        <div class="field"><label>PIN da administração</label><input type="text" id="setPin" inputmode="numeric" maxlength="8"></div>
+        <div class="field">
+          <label>Validar dígitos do CPF</label>
+          <select id="setValidate" style="background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px 11px;font-size:.9rem">
+            <option value="1">Sim — recusa CPF inválido</option>
+            <option value="0">Não — aceita qualquer número de 11 dígitos</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="setSave" style="flex:none;align-self:flex-start;padding:12px 28px">Salvar configurações</button>
+
+        <div style="border-top:1px solid var(--line);padding-top:18px;margin-top:6px">
+          <label style="font-size:.72rem;color:var(--txt-faint);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px">Arquivo de dados (backup / Google Drive)</label>
+          <div id="fileStatus" class="note" style="margin:0 0 12px">Status: usando apenas a memória do navegador.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="mini go" id="fileConnect">Conectar/criar arquivo</button>
+            <button class="mini amber" id="fileReconnect" style="display:none">Reconectar arquivo</button>
+            <button class="mini" id="fileOpen">Abrir arquivo existente</button>
+            <button class="mini" id="fileDownload">Baixar cópia (.json)</button>
+            <button class="mini" id="fileUpload">Carregar de cópia (.json)</button>
+          </div>
+          <input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+          <div class="note" style="margin-top:12px;line-height:1.55">Para deixar online: instale o <b>Google Drive para computador</b> e, ao clicar em <b>Conectar/criar arquivo</b>, salve o <b>ponto-dados.json</b> dentro da pasta do Google Drive. A partir daí cada registro é gravado nesse arquivo automaticamente e o Drive sincroniza para a nuvem. (Funciona no Chrome ou Edge.)</div>
+        </div>
+
+        <div style="border-top:1px solid var(--line);padding-top:18px;margin-top:6px">
+          <div class="note" style="margin:0 0 12px">Os dados ficam salvos apenas neste computador/navegador. Faça exportações periódicas como backup.</div>
+          <button class="mini del" id="wipe" style="color:var(--danger)">Apagar todos os dados</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const LS = "lab_ponto_v1";
+const $ = s => document.querySelector(s);
+const pad2 = n => String(n).padStart(2,"0");
+
+/* ---------- state ---------- */
+let db = load();
+function load(){
+  try{ const r = JSON.parse(localStorage.getItem(LS)); if(r&&r.events) return r; }catch(e){}
+  return { labName:"Laboratório", pin:"1234", validate:true, students:{}, events:[] };
+  // students: { cpf: {name} }   events: [{cpf,name,type:'in'|'out',ts}]
+}
+let _wTimer;
+function save(){
+  try{ localStorage.setItem(LS, JSON.stringify(db)); }catch(e){ /* localStorage pode falhar em file://; o arquivo conectado é o backup */ }
+  if(fileConnected){ clearTimeout(_wTimer); _wTimer=setTimeout(writeFile,400); }
+}
+
+/* ---------- cpf utils ---------- */
+const onlyDigits = s => (s||"").replace(/\D/g,"");
+function fmtCpf(d){ d=onlyDigits(d).slice(0,11);
+  let o=d; if(d.length>9) o=`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+  else if(d.length>6) o=`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+  else if(d.length>3) o=`${d.slice(0,3)}.${d.slice(3)}`;
+  return o;
+}
+function validCpf(d){ d=onlyDigits(d);
+  if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+  let s=0; for(let i=0;i<9;i++) s+=+d[i]*(10-i);
+  let r=(s*10)%11; if(r===10) r=0; if(r!==+d[9]) return false;
+  s=0; for(let i=0;i<10;i++) s+=+d[i]*(11-i);
+  r=(s*10)%11; if(r===10) r=0; return r===+d[10];
+}
+
+/* ---------- clock ---------- */
+const DOW=["dom","seg","ter","qua","qui","sex","sáb"];
+function tick(){ const n=new Date();
+  $("#clockT").textContent=`${pad2(n.getHours())}:${pad2(n.getMinutes())}:${pad2(n.getSeconds())}`;
+  $("#clockD").textContent=`${DOW[n.getDay()]}, ${pad2(n.getDate())}/${pad2(n.getMonth()+1)}/${n.getFullYear()}`;
+}
+setInterval(tick,1000); tick();
+
+/* ---------- kiosk input ---------- */
+let buf="";
+function renderCpf(){
+  const d=$("#cpfDisplay"); const f=fmtCpf(buf);
+  const placeholder="000.000.000-00";
+  if(!buf){ d.innerHTML=`<span class="ph">${placeholder}</span>`; return; }
+  d.textContent=f;
+}
+function hint(msg){ const h=$("#cpfHint"); h.textContent=msg; h.classList.add("show"); setTimeout(()=>h.classList.remove("show"),2200); }
+function press(k){
+  if(k==="back"){ buf=buf.slice(0,-1); renderCpf(); return; }
+  if(k==="enter"){ submit(); return; }
+  if(buf.length>=11) return;
+  buf+=k; renderCpf();
+}
+$("#pad").addEventListener("click",e=>{ const b=e.target.closest(".key"); if(b) press(b.dataset.k); });
+document.addEventListener("keydown",e=>{
+  if($("#admin").classList.contains("show")||$("#pinModal").classList.contains("show")||$("#nameFlash").classList.contains("show")) return;
+  if(/^[0-9]$/.test(e.key)) press(e.key);
+  else if(e.key==="Backspace"){ e.preventDefault(); press("back"); }
+  else if(e.key==="Enter") press("enter");
+});
+
+/* ---------- status helpers ---------- */
+function lastEvent(cpf){ for(let i=db.events.length-1;i>=0;i--) if(db.events[i].cpf===cpf) return db.events[i]; return null; }
+function isInside(cpf){ const e=lastEvent(cpf); return e&&e.type==="in"; }
+function insideCount(){ const seen={}; let c=0;
+  for(let i=db.events.length-1;i>=0;i--){ const e=db.events[i]; if(seen[e.cpf]) continue; seen[e.cpf]=1; if(e.type==="in") c++; }
+  return c;
+}
+function refreshInside(){ const c=insideCount(); $("#insideTxt").textContent=`${c} ${c===1?"aluno":"alunos"} no laboratório agora`; }
+
+/* ---------- submit ---------- */
+let pendingCpf="";
+function submit(){
+  const d=onlyDigits(buf);
+  if(d.length!==11){ hint("CPF deve ter 11 dígitos."); return; }
+  if(db.validate && !validCpf(d)){ hint("CPF inválido. Confira os números."); return; }
+  if(!db.students[d]){ notRegistered(); return; }
+  registerToggle(d);
+}
+function registerToggle(cpf){
+  const going = isInside(cpf) ? "out" : "in";
+  const now = Date.now();
+  db.events.push({cpf, name:db.students[cpf].name, type:going, ts:now});
+  save();
+  buf=""; renderCpf(); refreshInside();
+  showFlash(cpf, going, now);
+}
+function notRegistered(){
+  const f=$("#flash");
+  f.className="flash show warn";
+  $("#flashIcon").textContent="!";
+  $("#flashTag").textContent="CPF não cadastrado";
+  $("#flashWho").textContent="Procure o responsável pelo laboratório";
+  $("#flashMeta").textContent="O cadastro é feito apenas pela administração";
+  clearTimeout(showFlash._t);
+  showFlash._t=setTimeout(()=>f.classList.remove("show"),3800);
+  buf=""; renderCpf();
+}
+
+/* ---------- name capture ---------- */
+function openName(){ $("#nameInput").value=""; $("#nameFlash").classList.add("show"); setTimeout(()=>$("#nameInput").focus(),50); }
+function closeName(){ $("#nameFlash").classList.remove("show"); }
+$("#nameCancel").onclick=()=>{ closeName(); pendingCpf=""; };
+$("#nameSave").onclick=()=>{
+  const nm=$("#nameInput").value.trim();
+  if(nm.length<2){ $("#nameInput").focus(); return; }
+  db.students[pendingCpf]={name:nm}; save();
+  const cpf=pendingCpf; pendingCpf=""; closeName();
+  registerToggle(cpf);
+};
+$("#nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#nameSave").click(); });
+
+/* ---------- flash feedback ---------- */
+function hoursToday(cpf){
+  const today=new Date(); today.setHours(0,0,0,0); const t0=today.getTime();
+  const evs=db.events.filter(e=>e.cpf===cpf && e.ts>=t0).sort((a,b)=>a.ts-b.ts);
+  let ms=0,open=null;
+  for(const e of evs){ if(e.type==="in") open=e.ts; else if(e.type==="out"&&open!=null){ ms+=e.ts-open; open=null; } }
+  return ms;
+}
+function fmtDur(ms){ const m=Math.round(ms/60000); const h=Math.floor(m/60); return `${h}h ${pad2(m%60)}min`; }
+function showFlash(cpf, type, ts){
+  const f=$("#flash"); const name=db.students[cpf].name;
+  f.className="flash show "+(type==="in"?"in":"out");
+  $("#flashIcon").textContent = type==="in" ? "→" : "←";
+  $("#flashTag").textContent = type==="in" ? "Entrada registrada" : "Saída registrada";
+  $("#flashWho").textContent = (type==="in"?"Bem-vindo(a), ":"Até logo, ")+name.split(" ")[0];
+  const time=new Date(ts); const hhmm=`${pad2(time.getHours())}:${pad2(time.getMinutes())}`;
+  $("#flashMeta").textContent = type==="in" ? hhmm : `${hhmm} · ${fmtDur(hoursToday(cpf))} hoje`;
+  clearTimeout(showFlash._t);
+  showFlash._t=setTimeout(()=>f.classList.remove("show"), 3400);
+}
+$("#flash").addEventListener("click",()=>$("#flash").classList.remove("show"));
+
+/* ---------- admin open/close + pin ---------- */
+$("#openAdmin").onclick=()=>{ $("#pinInput").value=""; $("#pinModal").classList.add("show"); setTimeout(()=>$("#pinInput").focus(),50); };
+$("#pinCancel").onclick=()=>$("#pinModal").classList.remove("show");
+$("#pinOk").onclick=()=>{
+  if($("#pinInput").value===String(db.pin)){ $("#pinModal").classList.remove("show"); openAdmin(); }
+  else { $("#pinInput").value=""; $("#pinInput").placeholder="PIN incorreto"; }
+};
+$("#pinInput").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#pinOk").click(); });
+$("#closeAdmin").onclick=()=>{ $("#admin").classList.remove("show"); refreshInside(); };
+
+function openAdmin(){
+  $("#admin").classList.add("show");
+  $("#adminTitle").textContent=db.labName;
+  // default period = current month
+  const n=new Date(); const first=new Date(n.getFullYear(),n.getMonth(),1);
+  $("#fDe").value=isoDate(first); $("#fAte").value=isoDate(n);
+  renderAll();
+}
+function isoDate(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".panel-view").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  $(`.panel-view[data-view="${t.dataset.tab}"]`).classList.add("active");
+});
+
+/* ---------- period filtering ---------- */
+function periodRange(){
+  const de=$("#fDe").value, ate=$("#fAte").value;
+  let t0=-Infinity, t1=Infinity;
+  if(de){ const d=new Date(de+"T00:00:00"); t0=d.getTime(); }
+  if(ate){ const d=new Date(ate+"T23:59:59.999"); t1=d.getTime(); }
+  return [t0,t1];
+}
+$("#fDe").onchange=renderHours; $("#fAte").onchange=renderHours;
+$("#fClear").onclick=()=>{ $("#fDe").value=""; $("#fAte").value=""; renderHours(); };
+
+/* ---------- compute hours per student ---------- */
+function computeHours(){
+  const [t0,t1]=periodRange();
+  const byCpf={};
+  // group events by cpf within period, sorted
+  const evs=db.events.filter(e=>e.ts>=t0&&e.ts<=t1).sort((a,b)=>a.ts-b.ts);
+  for(const e of evs){
+    if(!byCpf[e.cpf]) byCpf[e.cpf]={cpf:e.cpf,name:e.name,ms:0,count:0,days:new Set(),open:null};
+    const s=byCpf[e.cpf]; s.count++; s.name=db.students[e.cpf]?db.students[e.cpf].name:e.name;
+    if(e.type==="in"){ s.open=e.ts; }
+    else if(e.type==="out"&&s.open!=null){ s.ms+=e.ts-s.open; s.days.add(new Date(s.open).toDateString()); s.open=null; }
+  }
+  return Object.values(byCpf).map(s=>({...s,days:s.days.size}))
+    .sort((a,b)=>b.ms-a.ms);
+}
+
+function renderHours(){
+  const rows=computeHours();
+  const tb=$("#hoursTable tbody"); tb.innerHTML="";
+  let totMs=0;
+  rows.forEach(r=>{ totMs+=r.ms;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${esc(r.name)}</td><td class="mono">${fmtCpf(r.cpf)}</td>
+      <td class="num">${r.days}</td><td class="num">${r.count}</td><td class="num">${fmtDur(r.ms)}</td>`;
+    tb.appendChild(tr);
+  });
+  $("#hoursTable").style.display=rows.length?"":"none";
+  $("#hoursEmpty").style.display=rows.length?"none":"";
+  $("#hoursCards").innerHTML=`
+    <div class="stat"><div class="v">${rows.length}</div><div class="l">Alunos</div></div>
+    <div class="stat"><div class="v">${fmtDur(totMs)}</div><div class="l">Horas no período</div></div>
+    <div class="stat"><div class="v">${insideCount()}</div><div class="l">No lab agora</div></div>`;
+}
+
+/* ---------- log ---------- */
+function renderLog(){
+  const q=onlyDigits($("#logFilter").value), qn=$("#logFilter").value.trim().toLowerCase();
+  const tb=$("#logTable tbody"); tb.innerHTML="";
+  const evs=[...db.events].sort((a,b)=>b.ts-a.ts).filter(e=>{
+    if(q&&!e.cpf.includes(q)) { if(!qn||!e.name.toLowerCase().includes(qn)) return false; }
+    else if(!q&&qn&&!e.name.toLowerCase().includes(qn)) return false;
+    return true;
+  });
+  evs.forEach((e)=>{
+    const idx=db.events.indexOf(e);
+    const d=new Date(e.ts);
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="mono">${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${d.getFullYear()}</td>
+      <td class="mono">${pad2(d.getHours())}:${pad2(d.getMinutes())}</td>
+      <td>${esc(e.name)}</td><td class="mono">${fmtCpf(e.cpf)}</td>
+      <td><span class="pill ${e.type}">${e.type==="in"?"Entrada":"Saída"}</span></td>
+      <td><button class="mini del" data-del="${idx}">excluir</button></td>`;
+    tb.appendChild(tr);
+  });
+  $("#logTable").style.display=evs.length?"":"none";
+  $("#logEmpty").style.display=evs.length?"none":"";
+  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    if(confirm("Excluir este registro?")){ db.events.splice(+b.dataset.del,1); save(); renderAll(); }
+  });
+}
+$("#logFilter").oninput=renderLog;
+$("#closeOpen").onclick=()=>{
+  const inside=[]; const seen={};
+  for(let i=db.events.length-1;i>=0;i--){ const e=db.events[i]; if(seen[e.cpf])continue; seen[e.cpf]=1; if(e.type==="in") inside.push(e.cpf); }
+  if(!inside.length){ alert("Nenhuma entrada em aberto."); return; }
+  if(!confirm(`Registrar saída agora para ${inside.length} aluno(s) que ainda estão "dentro"?`)) return;
+  const now=Date.now();
+  inside.forEach(cpf=>db.events.push({cpf,name:db.students[cpf].name,type:"out",ts:now}));
+  save(); renderAll();
+};
+
+/* ---------- students ---------- */
+function renderStudents(){
+  const tb=$("#stTable tbody"); tb.innerHTML="";
+  const list=Object.keys(db.students).map(cpf=>({cpf,name:db.students[cpf].name})).sort((a,b)=>a.name.localeCompare(b.name));
+  list.forEach(s=>{
+    const inside=isInside(s.cpf);
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${esc(s.name)}</td><td class="mono">${fmtCpf(s.cpf)}</td>
+      <td><span class="pill ${inside?"in":"out"}">${inside?"No lab":"Fora"}</span></td>
+      <td><button class="mini del" data-edit="${s.cpf}">renomear</button>
+          <button class="mini del" data-rm="${s.cpf}">excluir</button></td>`;
+    tb.appendChild(tr);
+  });
+  $("#stTable").style.display=list.length?"":"none";
+  $("#stEmpty").style.display=list.length?"none":"";
+  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
+    const cpf=b.dataset.edit; const nm=prompt("Novo nome:",db.students[cpf].name);
+    if(nm&&nm.trim().length>=2){ db.students[cpf].name=nm.trim(); save(); renderAll(); }
+  });
+  tb.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
+    const cpf=b.dataset.rm;
+    if(confirm("Excluir o aluno? Os registros de ponto dele NÃO serão apagados.")){ delete db.students[cpf]; save(); renderAll(); }
+  });
+}
+$("#stAdd").onclick=()=>{
+  const cpf=onlyDigits($("#stCpf").value), nm=$("#stName").value.trim();
+  if(cpf.length!==11){ alert("CPF deve ter 11 dígitos."); return; }
+  if(db.validate&&!validCpf(cpf)){ alert("CPF inválido."); return; }
+  if(nm.length<2){ alert("Informe o nome."); return; }
+  db.students[cpf]={name:nm}; save(); $("#stCpf").value=""; $("#stName").value=""; renderAll();
+};
+
+/* ---------- settings ---------- */
+function fillSettings(){
+  $("#setLab").value=db.labName; $("#setPin").value=db.pin; $("#setValidate").value=db.validate?"1":"0";
+}
+$("#setSave").onclick=()=>{
+  const ln=$("#setLab").value.trim()||"Laboratório";
+  const pn=onlyDigits($("#setPin").value)||"1234";
+  db.labName=ln; db.pin=pn; db.validate=$("#setValidate").value==="1"; save();
+  applyLabName(); $("#adminTitle").textContent=ln;
+  $("#setSave").textContent="Salvo ✓"; setTimeout(()=>$("#setSave").textContent="Salvar configurações",1500);
+};
+$("#wipe").onclick=()=>{
+  if(prompt('Isto apaga TODOS os alunos e registros deste computador. Digite APAGAR para confirmar:')==="APAGAR"){
+    localStorage.removeItem(LS); db=load(); applyLabName(); renderAll(); refreshInside(); alert("Dados apagados.");
+  }
+};
+function applyLabName(){ $("#labName").textContent=db.labName; $("#labMark").textContent=(db.labName.trim()[0]||"L").toUpperCase(); }
+
+/* ---------- CSV export (Excel pt-BR: ; separator + UTF-8 BOM) ---------- */
+function csvCell(v){ v=String(v??""); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function download(name, rows){
+  const csv="\uFEFF"+rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+$("#expHours").onclick=()=>{
+  const rows=[["Aluno","CPF","Dias","Registros","Total de horas (h:min)","Total em horas decimais"]];
+  computeHours().forEach(r=>{
+    const dec=(r.ms/3600000).toFixed(2).replace(".",",");
+    rows.push([r.name,fmtCpf(r.cpf),r.days,r.count,fmtDur(r.ms),dec]);
+  });
+  download(`horas_${$("#fDe").value||"inicio"}_a_${$("#fAte").value||"hoje"}.csv`,rows);
+};
+$("#expLog").onclick=()=>{
+  const rows=[["Data","Hora","Aluno","CPF","Tipo"]];
+  [...db.events].sort((a,b)=>a.ts-b.ts).forEach(e=>{
+    const d=new Date(e.ts);
+    rows.push([`${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${d.getFullYear()}`,
+      `${pad2(d.getHours())}:${pad2(d.getMinutes())}`, e.name, fmtCpf(e.cpf), e.type==="in"?"Entrada":"Saída"]);
+  });
+  download("registros_ponto.csv",rows);
+};
+
+/* ---------- util ---------- */
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function renderAll(){ renderHours(); renderLog(); renderStudents(); fillSettings(); updateFileStatus(); }
+
+/* ---------- file storage (File System Access API + Google Drive para computador) ---------- */
+const FS_OK = ("showSaveFilePicker" in window);
+let fileHandle=null, fileConnected=false, fileName="";
+
+/* IndexedDB mínimo para lembrar o arquivo entre sessões */
+function idbReq(mode,fn){return new Promise((res,rej)=>{
+  const op=indexedDB.open("lab_ponto_fs",1);
+  op.onupgradeneeded=()=>{ op.result.createObjectStore("kv"); };
+  op.onerror=()=>rej(op.error);
+  op.onsuccess=()=>{ try{ const st=op.result.transaction("kv",mode).objectStore("kv"); const r=fn(st);
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }catch(e){ rej(e); } };
+});}
+const idbGet=k=>idbReq("readonly",st=>st.get(k)).catch(()=>null);
+const idbSet=(k,v)=>idbReq("readwrite",st=>st.put(v,k)).catch(()=>{});
+
+async function perm(h,ask){ const o={mode:"readwrite"};
+  if((await h.queryPermission(o))==="granted") return true;
+  if(ask && (await h.requestPermission(o))==="granted") return true;
+  return false;
+}
+function normalize(d){ return {
+  labName:d.labName||"Laboratório", pin:d.pin||"1234", validate:d.validate!==false,
+  students:(d.students&&typeof d.students==="object")?d.students:{},
+  events:Array.isArray(d.events)?d.events:[] };
+}
+async function writeFile(){
+  if(!fileHandle||!fileConnected) return;
+  try{
+    if(!(await perm(fileHandle,false))){ fileConnected=false; updateFileStatus(); return; }
+    const w=await fileHandle.createWritable();
+    await w.write(JSON.stringify(db,null,2));
+    await w.close();
+    updateFileStatus();
+  }catch(e){ console.warn("writeFile",e); fileConnected=false; updateFileStatus(); }
+}
+async function readHandleInto(h){
+  const f=await h.getFile(); const t=(await f.text()).trim();
+  if(!t) return false;
+  db=normalize(JSON.parse(t)); save(); applyLabName(); renderAll(); refreshInside();
+  return true;
+}
+async function connectFile(create){
+  if(!FS_OK){ alert("Este navegador não grava em arquivo automaticamente. Use Chrome ou Edge — ou os botões “Baixar cópia” / “Carregar de cópia”."); return; }
+  try{
+    if(create){
+      fileHandle=await window.showSaveFilePicker({ suggestedName:"ponto-dados.json",
+        types:[{description:"Dados do ponto",accept:{"application/json":[".json"]}}] });
+    }else{
+      [fileHandle]=await window.showOpenFilePicker({ multiple:false,
+        types:[{description:"Dados do ponto",accept:{"application/json":[".json"]}}] });
+    }
+    if(!(await perm(fileHandle,true))){ alert("Permissão ao arquivo negada."); fileHandle=null; return; }
+    fileName=fileHandle.name||"ponto-dados.json";
+    await idbSet("handle",fileHandle);
+    if(!create){
+      const f=await fileHandle.getFile(); const t=(await f.text()).trim();
+      if(t && confirm("Carregar os dados deste arquivo? Isso substitui os dados atuais deste computador.")) await readHandleInto(fileHandle);
+    }
+    fileConnected=true; await writeFile(); updateFileStatus();
+  }catch(e){
+    if(e.name==="AbortError") return;
+    let msg="Não foi possível conectar o arquivo.";
+    if(location.protocol==="file:") msg+="\n\nO navegador bloqueou a gravação automática porque a página foi aberta direto do disco (file://). Use “Baixar cópia” / “Carregar de cópia” para manter o arquivo no Google Drive.";
+    else msg+=" "+(e.message||"");
+    alert(msg);
+  }
+}
+async function tryReconnect(){
+  if(!FS_OK || !window.indexedDB) { updateFileStatus(); return; }
+  try{
+    const h=await idbGet("handle"); if(!h){ updateFileStatus(); return; }
+    fileHandle=h; fileName=h.name||"ponto-dados.json";
+    if((await h.queryPermission({mode:"readwrite"}))==="granted"){
+      fileConnected=true; await readHandleInto(h).catch(()=>{}); await writeFile();
+    }
+    updateFileStatus();
+  }catch(e){ console.warn(e); updateFileStatus(); }
+}
+function updateFileStatus(){
+  const el=$("#fileStatus"); if(!el) return;
+  const rec=$("#fileReconnect"), con=$("#fileConnect");
+  if(fileConnected){
+    el.innerHTML=`Status: <b style="color:var(--in)">gravando automaticamente</b> em <span class="mono">${esc(fileName)}</span>.`;
+    if(rec) rec.style.display="none"; if(con) con.textContent="Trocar arquivo";
+  }else if(fileHandle){
+    el.innerHTML=`Status: arquivo <span class="mono">${esc(fileName)}</span> configurado, mas <b style="color:var(--out)">desconectado</b>. Clique em “Reconectar arquivo” (1 vez ao ligar o computador).`;
+    if(rec) rec.style.display="";
+  }else{
+    el.innerHTML="Status: usando apenas a memória do navegador (sem arquivo). Conecte um arquivo para ter backup e sincronizar com o Google Drive.";
+    if(rec) rec.style.display="none";
+  }
+}
+$("#fileConnect").onclick=()=>connectFile(true);
+$("#fileOpen").onclick=()=>connectFile(false);
+$("#fileReconnect").onclick=async()=>{
+  if(!fileHandle) return;
+  if(await perm(fileHandle,true)){ fileConnected=true; await readHandleInto(fileHandle).catch(()=>{}); await writeFile(); updateFileStatus(); }
+};
+$("#fileDownload").onclick=()=>{
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="ponto-dados.json"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+$("#fileUpload").onclick=()=>$("#fileInput").click();
+$("#fileInput").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    if(confirm("Carregar este arquivo? Isso substitui os dados atuais deste computador.")){
+      db=normalize(JSON.parse(r.result)); save(); applyLabName(); renderAll(); refreshInside();
+    }
+  }catch(err){ alert("Arquivo inválido."); } };
+  r.readAsText(f); e.target.value="";
+};
+
+/* ---------- boot ---------- */
+applyLabName(); renderCpf(); refreshInside(); updateFileStatus(); tryReconnect();
+</script>
+</body>
+</html>
